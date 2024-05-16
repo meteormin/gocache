@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+const (
+	dstMustNotBeNil = "dst must not be nil pointer"
+)
+
 // MemCache is a memory cache implementation.
 type MemCache struct {
 	ch        chan bool
@@ -37,7 +41,7 @@ type Instance[T interface{}] struct {
 	ExpiresIn time.Duration `json:"expiresIn"`
 }
 
-// GetValue returns the value of the instance.
+// / GetValue returns the value of the instance.
 func (i Instance[T]) GetValue() *T {
 	if time.Now().After(i.ExpiresAt) {
 		return nil
@@ -50,6 +54,10 @@ func (i Instance[T]) GetValue() *T {
 
 // IsExpired checks if the instance is expired.
 func (i Instance[T]) IsExpired() bool {
+	if i.ExpiresAt.IsZero() || i.ExpiresIn == 0 {
+		return false
+	}
+
 	return i.ExpiresAt.Before(time.Now())
 }
 
@@ -171,38 +179,44 @@ func get(m *MemCache, key string, dst interface{}) {
 		panic("dst must be a pointer")
 	}
 
+	var vPtr *interface{}
 	for _, instance := range m.instances {
-		if instance.Key == key {
-			if instance.IsExpired() {
-				delete(m, key)
-				return
-			}
-
-			insType := reflect.TypeOf(instance.Value).Kind()
-			dsType := reflect.TypeOf(dst).Elem().Kind()
-
-			dstValue := reflect.ValueOf(dst)
-			if dstValue.IsNil() {
-				panic("dst must not be nil pointer")
-			}
-
-			if insType == dsType {
-				vPtr := instance.GetValue()
-				dstValue.Elem().Set(reflect.ValueOf(*vPtr))
-			} else if dstValue.Elem().Kind() == reflect.Ptr {
-				vPtr := instance.GetValue()
-				if dstValue.Elem().IsNil() {
-					panic("dst must not be nil pointer")
-				}
-
-				ptrDstValue := dstValue.Elem()
-				if ptrDstValue.IsNil() {
-					panic("dst must not be nil pointer")
-				}
-
-				ptrDstValue.Elem().Set(reflect.ValueOf(*vPtr))
-			}
+		if instance.IsExpired() {
+			delete(m, key)
+			continue
 		}
+
+		if instance.Key == key {
+			vPtr = instance.GetValue()
+			break
+		}
+	}
+
+	if vPtr == nil {
+		return
+	}
+
+	dstValue := reflect.ValueOf(dst)
+	if dstValue.IsNil() {
+		panic(dstMustNotBeNil)
+	}
+
+	insType := reflect.TypeOf(*vPtr).Kind()
+	dsType := reflect.TypeOf(dst).Elem().Kind()
+
+	if insType == dsType {
+		dstValue.Elem().Set(reflect.ValueOf(*vPtr))
+	} else if dstValue.Elem().Kind() == reflect.Ptr {
+		if dstValue.Elem().IsNil() {
+			panic(dstMustNotBeNil)
+		}
+
+		ptrDstValue := dstValue.Elem()
+		if ptrDstValue.IsNil() {
+			panic(dstMustNotBeNil)
+		}
+
+		ptrDstValue.Elem().Set(reflect.ValueOf(*vPtr))
 	}
 }
 
@@ -362,17 +376,10 @@ func maxSizeError(m *MemCache, value interface{}) error {
 		m.maxSize, sizeOf(m.instances), sizeOf(value))
 }
 
-// randResolver generates a random number and checks if it already exists in the given slice.
-//
-// Parameters:
-// - tmp: a pointer to a slice of integers.
-//
-// Returns:
-// - int: the generated random number.
 func randResolver(tmp *[]int) int {
 	randSource := rand.NewSource(time.Now().UnixNano())
 	randNew := rand.New(randSource)
-	randomNumber := randNew.Intn(len(*tmp) - 0)
+	randomNumber := randNew.Intn(cap(*tmp))
 	for _, t := range *tmp {
 		if randomNumber == t {
 			return randResolver(tmp)
@@ -382,4 +389,38 @@ func randResolver(tmp *[]int) int {
 	*tmp = append(*tmp, randomNumber)
 
 	return randomNumber
+}
+
+func deleteExiredAll(m *MemCache) int {
+	deleted := 0
+	for _, instance := range m.instances {
+		if instance.IsExpired() {
+			if delete(m, instance.Key) {
+				deleted++
+			}
+		}
+	}
+
+	return deleted
+}
+
+func deleteExired(m *MemCache, size int) int {
+	deleted := 0
+	if count(m) <= size {
+		return deleteExiredAll(m)
+	}
+
+	tmp := make([]int, 0, 10)
+	for i := 0; i < size; i++ {
+		for j := 0; j < size; j++ {
+			randomNumber := randResolver(&tmp)
+			if m.instances[randomNumber].IsExpired() {
+				if delete(m, m.instances[randomNumber].Key) {
+					deleted++
+				}
+			}
+		}
+	}
+
+	return deleted
 }

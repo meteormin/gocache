@@ -1,9 +1,11 @@
 package gocache
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/go-faker/faker/v4"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -172,20 +174,22 @@ func TestMaxSize(t *testing.T) {
 			t.Log("current cache size:", Size())
 		})
 	}
-
 }
 
 func TestExpired(t *testing.T) {
 	New(0)
 
-	err := Set("test", time.Second, "test string")
-	assert.Nil(t, err)
+	Set("test", time.Second, "test string")
+	for i := 0; i < 100; i++ {
+		Set("test"+strconv.Itoa(i), time.Second*2, faker.Word())
+	}
+
 	assert.NotZero(t, Count())
 
 	tt := Value("test")
 	t.Log(tt.Value)
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 3)
 
 	t.Log("current cache size:", Size())
 	var str string
@@ -193,4 +197,19 @@ func TestExpired(t *testing.T) {
 
 	assert.NotEqual(t, "test string", str)
 	assert.Zero(t, Count())
+}
+
+func TestGetStat(t *testing.T) {
+	cacheObj := New(0)
+	Set("test", 0, "test string")
+	Set("test2", 0, "test string")
+	Set("test3", 0, "test string")
+
+	stat := GetStat()
+	assert.Equal(t, Count(), stat.Count)
+	assert.Equal(t, Keys(), stat.Keys)
+	assert.Equal(t, MaxSize(), stat.MaxSize)
+	assert.Equal(t, getSize(cacheObj), stat.Size)
+	assert.Equal(t, float64(getSize(cacheObj))/float64(maxSize(cacheObj))*100.0, stat.Usage)
+	assert.Equal(t, Values(), stat.Values)
 }
