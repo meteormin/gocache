@@ -425,7 +425,7 @@ func deleteExired(m *MemCache, size int) {
 		return
 	}
 
-	tmp := make([]int, 0, size)
+	tmp := make([]int, 0, count(m))
 	for len(tmp) < size {
 		randResolver(&tmp)
 	}
