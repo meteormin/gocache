@@ -376,19 +376,28 @@ func maxSizeError(m *MemCache, value interface{}) error {
 		m.maxSize, sizeOf(m.instances), sizeOf(value))
 }
 
-func randResolver(tmp *[]int) int {
+// randResolver generates a random number that is not already present in the input slice.
+//
+// Parameters:
+// tmp *[]int - a pointer to a slice of integers.
+//
+// Return type:
+// int - the generated random number.
+func randResolver(tmp *[]int) {
+	if cap(*tmp) == len(*tmp) {
+		return
+	}
+
 	randSource := rand.NewSource(time.Now().UnixNano())
 	randNew := rand.New(randSource)
 	randomNumber := randNew.Intn(cap(*tmp))
 	for _, t := range *tmp {
 		if randomNumber == t {
-			return randResolver(tmp)
+			randResolver(tmp)
 		}
 	}
 
 	*tmp = append(*tmp, randomNumber)
-
-	return randomNumber
 }
 
 func deleteExiredAll(m *MemCache) int {
@@ -404,6 +413,11 @@ func deleteExiredAll(m *MemCache) int {
 	return deleted
 }
 
+// deleteExired deletes expired instances from the MemCache based on the given size.
+//
+// Parameters:
+// m *MemCache - a pointer to the MemCache object.
+// size int - the size parameter for deletion.
 func deleteExired(m *MemCache, size int) {
 	deleted := 0
 	if count(m) <= size {
@@ -411,14 +425,15 @@ func deleteExired(m *MemCache, size int) {
 		return
 	}
 
-	tmp := make([]int, 0, 10)
-	for i := 0; i < size; i++ {
-		for j := 0; j < size; j++ {
-			randomNumber := randResolver(&tmp)
-			if m.instances[randomNumber].IsExpired() {
-				if delete(m, m.instances[randomNumber].Key) {
-					deleted++
-				}
+	tmp := make([]int, 0, size)
+	for len(tmp) < size {
+		randResolver(&tmp)
+	}
+
+	for _, randNumber := range tmp {
+		if m.instances[randNumber].IsExpired() {
+			if delete(m, m.instances[randNumber].Key) {
+				deleted++
 			}
 		}
 	}
