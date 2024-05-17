@@ -6,7 +6,7 @@ import (
 
 var memCache *MemCache
 
-// New initializes a new MemCache with the given maxSize and starts a goroutine to periodically check for expired instances.
+// / New initializes a new MemCache with the given maxSize and starts a goroutine to periodically check for expired instances.
 //
 // Parameter: maxSize uint - the maximum size of the MemCache
 // Returns: *MemCache - a pointer to the newly created MemCache
@@ -15,13 +15,14 @@ func New(maxSize uint) *MemCache {
 
 	go func() {
 		for {
-			deleteExired(memCache, 10)
+			go deleteExired(memCache, 10)
 
-			time.Sleep(time.Second)
-
-			if <-memCache.ch {
+			deleted := <-memCache.ch
+			if deleted < 0 {
 				return
 			}
+
+			time.Sleep(time.Second)
 		}
 	}()
 
@@ -133,7 +134,7 @@ func GetStat() Stat {
 // No parameters.
 // No return types.
 func Close() {
-	memCache.ch <- true
+	memCache.ch <- -1
 }
 
 func IsRunning() bool {

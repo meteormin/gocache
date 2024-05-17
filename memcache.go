@@ -13,7 +13,7 @@ const (
 
 // MemCache is a memory cache implementation.
 type MemCache struct {
-	ch        chan bool
+	ch        chan int
 	instances []Instance[interface{}]
 	maxSize   uint
 }
@@ -65,7 +65,7 @@ func (i Instance[T]) IsExpired() bool {
 // maxSize is the maximum byte size that can be stored in the cache.
 func NewMemCache(maxSize uint) *MemCache {
 	return &MemCache{
-		ch:        make(chan bool),
+		ch:        make(chan int),
 		instances: make([]Instance[interface{}], 0),
 		maxSize:   maxSize,
 	}
@@ -404,10 +404,11 @@ func deleteExiredAll(m *MemCache) int {
 	return deleted
 }
 
-func deleteExired(m *MemCache, size int) int {
+func deleteExired(m *MemCache, size int) {
 	deleted := 0
 	if count(m) <= size {
-		return deleteExiredAll(m)
+		m.ch <- deleteExiredAll(m)
+		return
 	}
 
 	tmp := make([]int, 0, 10)
@@ -422,5 +423,5 @@ func deleteExired(m *MemCache, size int) int {
 		}
 	}
 
-	return deleted
+	m.ch <- deleted
 }
